@@ -57,7 +57,7 @@ module PoolParty
             requires get_gem_package("passenger")
             not_if "test -f /etc/apache2/mods-available/passenger.conf && test -s /etc/apache2/mods-available/passenger.conf "
             creates lambda { "@node[:apache][:passenger_module_path]" }
-            end
+          end
           
           @enable_passenger = true
         end
@@ -74,6 +74,8 @@ module PoolParty
             content <<-eof
 LoadModule passenger_module <%= @node[:passenger_site][:passenger_module_path] %>
             eof
+
+            requires get_exec("install_passenger_script")
           end
           
           has_file(:name => "/etc/apache2/mods-available/passenger.conf") do
@@ -81,9 +83,11 @@ LoadModule passenger_module <%= @node[:passenger_site][:passenger_module_path] %
 PassengerRoot <%= @node[:passenger_site][:passenger_root_path] %>
 PassengerRuby <%= @node[:languages][:ruby][:ruby_bin] %>
             eof
+
+            requires get_exec("install_passenger_script")
           end
           
-          present_apache_module(:passenger)
+          present_single_apache_module(:passenger, :requires => get_exec("install_passenger_script"))
           @passenger_configs = true
         end
       end
@@ -91,7 +95,7 @@ PassengerRuby <%= @node[:languages][:ruby][:ruby_bin] %>
       def configs
         unless @configs
           listen(port) unless @listen
-          has_directory("#{www_dir}", :mode => "0755")
+          has_directory("#{www_dir}", :mode => "0755") if www_dir
           has_directory("/etc/apache2")
           has_directory("/etc/apache2/conf.d")
           has_directory("/etc/apache2/site-includes")
@@ -176,15 +180,19 @@ PassengerRuby <%= @node[:languages][:ruby][:ruby_bin] %>
       
       def present_apache_module(*names)
         names.each do |name|
-          has_exec(:name => "mod-#{name}", :command => "/usr/sbin/a2enmod #{name}") do            
-            not_if "/bin/sh -c \'[ -L /etc/apache2/mods-enabled/#{name}.load ] && [ /etc/apache2/mods-enabled/#{name}.load -ef /etc/apache2/mods-available/#{name}.load ]\'"
-            requires get_package("apache2")
-            notifies get_exec("force-reload-apache2"), :run
-            requires get_exec("force-reload-apache2")
-          end
+          present_single_apache_module(name)
         end
       end
-      
+
+      def present_single_apache_module(name, options = {})
+        has_exec(options.merge(:name => "mod-#{name}", :command => "/usr/sbin/a2enmod #{name}")) do
+          not_if "/bin/sh -c \'[ -L /etc/apache2/mods-enabled/#{name}.load ] && [ /etc/apache2/mods-enabled/#{name}.load -ef /etc/apache2/mods-available/#{name}.load ]\'"
+          requires get_package("apache2")
+          notifies get_exec("force-reload-apache2"), :run
+          requires get_exec("force-reload-apache2")
+        end
+      end
+
       def absent_apache_module(*names)
         names.each do |name|
           has_exec({:name => "no-mod-#{name}"}, :command => "/usr/sbin/a2dismod #{name}") do

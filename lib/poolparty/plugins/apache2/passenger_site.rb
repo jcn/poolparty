@@ -3,45 +3,24 @@ module PoolParty
     # Usage:
     #
     # passenger_site do
+    #   port              "80"
+    #   environment       "production"
+    #   site_directory    "/var/www"
+    #   log_dir           "/var/log/apache2"
+    #   passenger_version "2.2.4"
     # end
-    class PassengerSite < Resource
+    class PassengerSite < Apache
       
       default_options(
-        :dir            => "/var/www",
-        :appended_path  => nil,
-        :owner          => 'www-data', 
-        :mode           =>'0744',
+        :port           => "80",
         :environment    => 'production',
-        :deploy_dirs    => false
+        :site_directory => "/var/www",
+        :log_dir        => "/var/log/apache2",
+        :passenger_version => "2.2.4"
       )
       
-      def after_loaded(opts={})
+      def after_loaded
         enable_passenger
-        port "80" unless self.port
-        
-        has_directory(:name => dir,                 :owner => www_user, :mode => '0744')
-        has_directory(:name => "#{site_directory}", :owner => www_user, :mode => '0744')
-        has_site_directory 'logs'
-        
-        if dsl_options[:deploy_dirs] || opts[:with_deployment_directories]
-          has_site_directory "shared"
-          has_site_directory "shared/public"
-          has_site_directory "shared/config"
-          has_site_directory "shared/log"
-          has_site_directory "releases"
-          if !File.exists?("#{dir}/#{name}/current")
-          
-          # setup an initial symlink so apache will start even if there have not been any deploys yet
-            #has_site_directory "releases/initial/public"
-            #FIXME  the following line is chef specific.  It will fail with puppet
-            has_link(:target_file => "#{dir}/#{name}/current", :to => "#{dir}/#{name}/releases/initial")
-          end
-          log_dir = "#{site_directory}/shared/log"
-          appended_path "current"
-        
-        else
-          log_dir = "#{site_directory}/log"
-        end
         
         pass_entry = <<-EOE
   <VirtualHost *:#{port}>
@@ -66,16 +45,6 @@ module PoolParty
         end
       end
       
-      def has_site_directory( dir_name='' , opts={})
-        has_directory({ :name   => "#{site_directory}/#{dir_name}", 
-                        :owner  => www_user, 
-                        :mode   =>'0744'
-                      }.merge(opts) )
-      end
-      
-      def site_directory
-        "#{dir}/#{name}%s" % [appended_path ? "/" + appended_path : ""]
-      end
     end
     
   end
